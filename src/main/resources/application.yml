@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: spark-k8-watcher
+  graphql:
+    path: /graphql
+    websocket:
+      path: /graphql

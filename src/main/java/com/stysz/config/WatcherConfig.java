@@ -16,9 +16,22 @@ import reactor.core.publisher.Sinks;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 
 @Configuration
 public class WatcherConfig {
+
+    private final CustomResourceDefinitionContext context = new CustomResourceDefinitionContext.Builder()
+            .withGroup("sparkoperator.k8s.io")
+            .withVersion("v1beta2")
+            .withScope("Namespaced")
+            .withPlural("sparkapplications")
+            .build();
+
+    @Bean
+    public MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> resources(KubernetesClient client) {
+        return client.genericKubernetesResources(context);
+    }
 
     @Bean
     public KubernetesClient kubernetesClient() {
@@ -26,33 +39,32 @@ public class WatcherConfig {
     }
 
     @Bean
-    public Sinks.Many<JobStatusUpdate> jobStatusSink(KubernetesClient client) {
-        Sinks.Many<JobStatusUpdate> sink = Sinks.many().multicast().onBackpressureBuffer();
-
-        CustomResourceDefinitionContext context = new CustomResourceDefinitionContext.Builder()
-                .withGroup("sparkoperator.k8s.io")
-                .withVersion("v1beta2")
-                .withScope("Namespaced")
-                .withPlural("sparkapplications")
-                .build();
-
-        MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> resources =
-                client.genericKubernetesResources(context);
+    public Sinks.Many<JobStatusUpdate> jobStatusSink(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> resources) {
+        Sinks.Many<JobStatusUpdate> sink = Sinks.many().replay().latest();
 
         resources.inNamespace("default").watch(new Watcher<>() {
             @Override
             public void eventReceived(Action action, GenericKubernetesResource resource) {
                 try {
-                    String name = resource.getMetadata().getName();
-                    Map<String, Object> status = resource.getAdditionalProperties();
-                    if (status != null && status.containsKey("status")) {
-                        Map<String, Object> statusMap = (Map<String, Object>) status.get("status");
-                        if (statusMap.containsKey("applicationState")) {
-                            Map<String, String> appState = (Map<String, String>) statusMap.get("applicationState");
-                            String state = appState.get("state");
-                            sink.tryEmitNext(new JobStatusUpdate(name, state, Instant.now().toString()));
-                        }
-                    }
+                    Optional.ofNullable(resource.getAdditionalProperties().get("status"))
+                            .filter(Map.class::isInstance)
+                            .map(Map.class::cast)
+                            .ifPresent(statusMap -> {
+                                String name = resource.getMetadata().getName();
+                                String state = Optional.ofNullable(statusMap.get("applicationState"))
+                                        .filter(Map.class::isInstance)
+                                        .map(m -> ((Map<?, ?>) m).get("state"))
+                                        .map(Object::toString)
+                                        .orElse(null);
+
+                                String appId = Optional.ofNullable(statusMap.get("sparkApplicationId"))
+                                        .map(Object::toString)
+                                        .orElse(null);
+
+                                JobStatusUpdate update = new JobStatusUpdate(appId, name, state, Instant.now().toString());
+                                System.out.println(update);
+                                sink.tryEmitNext(update);
+                            });
                 } catch (Exception e) {
                     System.err.println("Failed to parse SparkApplication status: " + e.getMessage());
                 }

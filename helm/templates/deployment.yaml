@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-application-event-watcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-application-event-watcher
+  template:
+    metadata:
+      labels:
+        app: spark-application-event-watcher
+    spec:
+      serviceAccountName: "{{ include "spark-application-event-watcher.serviceAccountName" . | trim}}"
+      containers:
+        - name: spark-application-event-watcher
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: JAVA_OPTS
+              value: "-Dspring.profiles.active=default"

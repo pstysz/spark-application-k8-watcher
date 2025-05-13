@@ -1,0 +1,14 @@
+type Subscription {
+    jobStatusUpdates: JobStatusUpdate!
+}
+
+type Query {
+    jobsStatus: [JobStatusUpdate]
+}
+
+type JobStatusUpdate {
+    sparkApplicationId: String
+    name: String!
+    status: String
+    updatedAt: String!
+}

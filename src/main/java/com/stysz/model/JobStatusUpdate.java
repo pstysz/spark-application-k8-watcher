@@ -1,3 +1,5 @@
 package com.stysz.model;
 
-public record JobStatusUpdate(String name, String status, String updatedAt) {}
+import org.springframework.lang.Nullable;
+
+public record JobStatusUpdate(@Nullable String sparkApplicationId, String name, String status, String updatedAt) {}
